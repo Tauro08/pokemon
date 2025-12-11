@@ -5,13 +5,20 @@
     <div class="actions">
       <button @click="handleRouteOrAlert('missions')">Misiones de la zona</button>
       <button @click="handleRouteOrAlert('pvp')">Ir a PVP</button>
-      <button @click="startCapture">Iniciar captura</button>
+      <button @click="startCapture" :disabled="capturando">Iniciar captura</button>
+    </div>
+    <div v-if="capturando" class="capture-status">Buscando Pokémon salvaje…</div>
+    <div v-if="pokemonCapturado" class="capture-result">
+      ¡Se encontró un <strong>{{ pokemonCapturado }}</strong> salvaje!
     </div>
 
     <section class="npcs">
       <h2>NPCs</h2>
+      <div style="margin-bottom: 12px;">
+        <button @click="agregarNpcVisitante" style="padding: 8px 12px; border-radius: 8px; background: #10b981; color: white; border: none; cursor: pointer;">Agregar NPC visitante</button>
+      </div>
       <ul>
-        <li v-for="npc in npcs" :key="npc.id">
+        <li v-for="npc in npcsList" :key="npc.id">
           <div class="npc-info">
             <strong>{{ npc.name }}</strong>
             <p class="npc-role">{{ npc.role }}</p>
@@ -25,7 +32,11 @@
 
     <section class="trainers">
       <h2>Entrenadores online</h2>
-      <ul>
+      <label class="switch-container">
+        <input type="checkbox" v-model="showOnline" />
+        <span class="switch-label">Mostrar entrenadores</span>
+      </label>
+      <ul v-if="showOnline">
         <li v-for="t in trainers" :key="t.id">
           <div class="trainer-info">
             <strong>{{ t.name }}</strong>
@@ -38,13 +49,28 @@
         </li>
       </ul>
     </section>
+    
+    <section class="zone-pokemons">
+      <h2>Pokémon de la zona</h2>
+      <div class="pokemoncard">
+        <PokemonCard
+          v-for="p in store.pokemons"
+          :key="p.id"
+          :pokemon="p"
+        />
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, watch, ref, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { zonas } from '@/data/zones'
+import { zonePokemonMap } from '@/data/zonePokemonMap'
+import { pokemonsPorZona } from '@/data/pokemonsPorZona'
+import { usePokemonStore } from '@/stores/pokemonStore.js'
+import PokemonCard from '@/components/pokemonCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,12 +83,65 @@ const zoneId = computed(() => {
 const zone = computed(() => zonas.find(z => z.id === zoneId.value) || null)
 const zoneName = computed(() => zone.value ? zone.value.nombre : 'Zona desconocida')
 
-// Constantes temporales para NPCs y entrenadores
-const npcs = [
+const store = usePokemonStore()
+
+// Cargar pokemons permitidos para la zona actual
+watch(zoneId, async (val) => {
+  if (!val) return
+  const pid = zonePokemonMap[val]
+  if (pid) {
+    await store.loadPokemons([pid])
+  }
+}, { immediate: true })
+
+// === Estados internos ===
+
+// 1. Lista reactiva de NPCs
+const npcsList = reactive([
   { id: 1, name: 'Aldo', role: 'Guía del Bosque' },
   { id: 2, name: 'Mariela', role: 'Comerciante' }
-]
+])
+let nextNpcId = 3
 
+function agregarNpcVisitante() {
+  npcsList.push({
+    id: nextNpcId++,
+    name: `NPC visitante ${nextNpcId - 2}`,
+    role: 'Visitante'
+  })
+}
+
+// 2. Switch ON/OFF para entrenadores online
+const showOnline = ref(true)
+
+// 3. Captura Pokémon activada
+const capturando = ref(false)
+const pokemonCapturado = ref(null)
+
+function startCapture() {
+  if (capturando.value) return
+  
+  capturando.value = true
+  pokemonCapturado.value = null
+  
+  // Simular búsqueda por 2 segundos
+  setTimeout(() => {
+    const pokemons = pokemonsPorZona[zoneId.value]
+    if (pokemons && pokemons.length > 0) {
+      // Seleccionar uno al azar
+      const randomIndex = Math.floor(Math.random() * pokemons.length)
+      pokemonCapturado.value = pokemons[randomIndex]
+    }
+    capturando.value = false
+    
+    // Limpiar mensaje después de 3 segundos
+    setTimeout(() => {
+      pokemonCapturado.value = null
+    }, 3000)
+  }, 2000)
+}
+
+// Constantes temporales para NPCs y entrenadores
 const trainers = [
   { id: 1, name: 'RivalJoe', level: 12 },
   { id: 2, name: 'Sara', level: 8 }
@@ -74,11 +153,6 @@ function handleRouteOrAlert(routeName) {
   } else {
     alert('Módulo en desarrollo')
   }
-}
-
-function startCapture() {
-  // No existe ruta de captura por ahora => aviso
-  alert('Módulo en desarrollo')
 }
 
 function talkToNpc(npc) {
@@ -200,6 +274,35 @@ li {
 @media (min-width: 1100px) {
   .npcs ul, .trainers ul { grid-template-columns: repeat(3, 1fr); }
   .actions { gap: 18px; }
+}
+
+/* Estilos para los nuevos estados */
+.switch-container { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.switch-container input { width: 18px; height: 18px; cursor: pointer; }
+.switch-label { font-weight: 600; color: #263238; }
+
+.capture-status { 
+  margin-top: 12px; 
+  padding: 12px; 
+  border-radius: 8px; 
+  background: #fef3c7; 
+  color: #92400e; 
+  font-weight: 600; 
+  animation: pulse 1s infinite;
+}
+
+.capture-result { 
+  margin-top: 12px; 
+  padding: 12px; 
+  border-radius: 8px; 
+  background: #d1fae5; 
+  color: #065f46; 
+  font-weight: 600; 
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 </style>

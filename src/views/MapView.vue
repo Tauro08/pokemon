@@ -9,10 +9,24 @@
         @click="irAZona(z.id)"
         :disabled="!z.desbloqueado"
       >
-        {{ z.nombre }}
+        <span class="zone-line">
+          <img
+            v-if="getZonePokemon(z.id)"
+            :src="getZonePokemon(z.id).sprites.front_default"
+            :alt="getZonePokemon(z.id).name"
+            style="width:28px;height:28px;margin-right:8px;vertical-align:middle;"
+          />
+          {{ z.nombre }}
+        </span>
       </button>
+      <!-- botón para desbloquear en dev -->
+      </div>
+      <div style="margin-top:12px; display:flex; gap:8px;">
+        <button v-for="z in zonas" :key="'u'+z.id" @click="desbloquearZona(z.id)" style="padding:6px 10px;border-radius:8px;">
+          Desbloquear {{ z.id }}
+        </button>
+      </div>
     </div>
-  </div>
 
   <div class="pokemoncard">
     <PokemonCard
@@ -24,18 +38,47 @@
 </template>
 
 <script setup>
-import { useRouter } from "vue-router";
-import { zonas } from "@/data/zones";
-import {usePokemonStore} from "@/stores/pokemonStore.js"
-import PokemonCard from "@/components/pokemonCard.vue";
+import { reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { zonas as zonasRaw } from '@/data/zones'
+import { zonePokemonMap } from '@/data/zonePokemonMap'
+import { usePokemonStore } from '@/stores/pokemonStore.js'
+import PokemonCard from '@/components/pokemonCard.vue'
 
-const store = usePokemonStore();
-const router = useRouter();
+const router = useRouter()
+const store = usePokemonStore()
 
-// El store ya carga los pokemons internamente al inicializarse
+// Crear un array reactivo de zonas basado en zonasRaw
+const zonas = reactive(zonasRaw.map(z => ({ ...z })))
+
+// Cargar pokemons representativos de las zonas usando zonePokemonMap
+onMounted(async () => {
+  const ids = Array.from(new Set(Object.values(zonePokemonMap)))
+  if (ids.length) {
+    await store.loadPokemons(ids)
+  }
+})
+
+function desbloquearZona(id) {
+  const z = zonas.find(x => x.id === id)
+  if (z) {
+    z.desbloqueado = true
+  }
+}
 
 function irAZona(id) {
-  router.push(`/zone/${id}`);
+  const z = zonas.find(x => x.id === id)
+  if (z && z.desbloqueado) {
+    router.push(`/zone/${id}`)
+  } else {
+    alert('Zona bloqueada')
+  }
+}
+
+function getZonePokemon(zoneId) {
+  const pid = zonePokemonMap[zoneId]
+  if (!pid) return null
+  return store.pokemons.find(p => p.id === pid) || null
 }
 </script>
 
